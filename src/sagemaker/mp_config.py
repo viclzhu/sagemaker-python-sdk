@@ -29,6 +29,9 @@ except ImportError:
     py_sdk = True
     SMPInvalidArgumentError = ValueError
 
+_TYPE = "type"
+_OPTIONS = "options"
+
 
 def int_or_float_if_possible(s):
     """Attempt to convert to int, or float."""
@@ -83,39 +86,37 @@ class ConfigParam:
             self._value = self._get_default()
             return
 
-        self.check_type(input_value, self.name, self.cfg_dict)
-        self.check_options(input_value, self.name, self.cfg_dict)
+        self._check_type(input_value, self.name, self.cfg_dict)
+        self._check_options(input_value, self.name, self.cfg_dict)
 
-        self.check_bounds_in_config(input_value, "lower_bound", self.name, self.cfg_dict)
-        self.check_bounds_in_config(input_value, "upper_bound", self.name, self.cfg_dict)
+        self._check_bounds_in_config(input_value, "lower_bound", self.name, self.cfg_dict)
+        self._check_bounds_in_config(input_value, "upper_bound", self.name, self.cfg_dict)
 
-        self.check_requires(input_value, "requires", self.name, self.cfg_dict)
-        self.check_requires(input_value, "requires_not", self.name, self.cfg_dict)
-        self.check_requires(input_value, "requires_either", self.name, self.cfg_dict)
+        self._check_requires(input_value, "requires", self.name, self.cfg_dict)
+        self._check_requires(input_value, "requires_not", self.name, self.cfg_dict)
+        self._check_requires(input_value, "requires_either", self.name, self.cfg_dict)
 
         self._value = input_value
 
-    def check_type(self, input_value, name, config_dict):
+    def _check_type(self, input_value, name, config_dict):
         """Check if input_value type is valid."""
-        TYPE = "type"
-        if TYPE in config_dict:
-            expected_types = self._parse_allowed_types(config_dict[TYPE])
+        if _TYPE in config_dict:
+            expected_types = self._parse_allowed_types(config_dict[_TYPE])
             if type(input_value) not in expected_types:
                 raise TypeError(
                     f"Config parameter {name} type needs to be one of {[e.__name__ for e in expected_types]}. Found: {type(input_value).__name__}."
                 )
 
-    def check_options(self, input_value, name, config_dict):
+    def _check_options(self, input_value, name, config_dict):
         """Check if input_value is an available option."""
-        OPTIONS = "options"
-        if OPTIONS in config_dict:
-            options = self._handle_dependencies(config_dict[OPTIONS])
+        if _OPTIONS in config_dict:
+            options = self._handle_dependencies(config_dict[_OPTIONS])
             if input_value not in options:
                 raise SMPInvalidArgumentError(
-                    f"Config parameter {name} must be one of {config_dict[OPTIONS]}. Found: {input_value}."
+                    f"Config parameter {name} must be one of {config_dict[_OPTIONS]}. Found: {input_value}."
                 )
 
-    def check_bounds_in_config(self, input_value, bound_type, name, config_dict):
+    def _check_bounds_in_config(self, input_value, bound_type, name, config_dict):
         """Check input_value is within bounds specified in config."""
         if bound_type not in config_dict:
             return
@@ -135,12 +136,18 @@ class ConfigParam:
                 f"Error: the only inputs to this `check_bounds_in_config()` should be 'upper_bound' or 'lower_bound'. This is a bug and should be fixed."
             )
 
-    def check_requires(self, input_value, requires_type, name, config_dict):
+    def _check_requires(self, input_value, requires_type, name, config_dict):
         """Check given requires type for the input value."""
         if requires_type not in config_dict:
             return
         default = self._get_default()
-        if (requires_type == "requires") or (requires_type == "requires_not"):
+
+        if requires_type not in ("requires", "requires_not", "requires_either"):
+            raise SMPInvalidArgumentError(
+                f"Error: the only inputs to this `_check_requires()` should be 'requires', 'requires_not', or 'requires_either'. This is a bug and should be fixed."
+            )
+
+        if requires_type in ("requires", "requires_not"):
             for k, v in config_dict[requires_type].items():
                 if requires_type == "requires":
                     if self.existing_params[k].value != v and input_value != default:
@@ -153,23 +160,21 @@ class ConfigParam:
                         raise SMPInvalidArgumentError(
                             f"Setting config parameter {name} to non-default value {input_value} requires {k} to not be {v}."
                         )
-        elif requires_type == "requires_either":
-            if input_value != default:
-                provided_configs = {}
-                requirement_satisfied = False
-                for k, v in config_dict["requires_either"].items():
-                    if self.existing_params[k].value == v:
-                        requirement_satisfied = True
-                        break
-                    provided_configs[k] = self.existing_params[k].value
-                if not requirement_satisfied:
-                    raise SMPInvalidArgumentError(
-                        f"Setting config parameter {name} to non-default value {input_value} requires either of following configs: {config_dict['requires_either']} But the configs found are: {provided_configs}"
-                    )
-        else:
-            raise SMPInvalidArgumentError(
-                f"Error: the only inputs to this `check_requires()` should be 'requires', 'requires_not', or 'requires_either'. This is a bug and should be fixed."
-            )
+            return
+
+        # requires_type == requires_either
+        if input_value != default:
+            provided_configs = {}
+            requirement_satisfied = False
+            for k, v in config_dict["requires_either"].items():
+                if self.existing_params[k].value == v:
+                    requirement_satisfied = True
+                    break
+                provided_configs[k] = self.existing_params[k].value
+            if not requirement_satisfied:
+                raise SMPInvalidArgumentError(
+                    f"Setting config parameter {name} to non-default value {input_value} requires either of following configs: {config_dict['requires_either']} But the configs found are: {provided_configs}"
+                )
 
     def _maybe_convert(self, value):
         """Convert the value to int or float if possible."""
