@@ -2,8 +2,11 @@
 
 This validation is done in Python SDK so that validation errors are
 immediately raised, before launching the training job.
+
+Rubik config.
 """
-"""Rubik config."""
+
+# pylint: disable=wrong-import-position
 
 # Standard Library
 import json
@@ -12,15 +15,23 @@ import re
 from pydoc import locate
 
 # Third Party
-import yaml
+import yaml  # noqa: E402
+
+# pylint: enable=wrong-import-position
 
 # NOTE: this file is duplicated across smp and SageMaker Python SDK.
 # any changes to this file requires an update of the corresponding file
 # in SageMaker Python SDK upon release.
 
 try:
-    import smdistributed.modelparallel.torch as smp
+    from smdistributed.modelparallel.backend.logger import get_logger
+    from smdistributed.modelparallel.backend.exceptions import (
+        SMPInvalidArgumentError,
+    )
 
+    logger = get_logger()
+    info_func = logger.info
+    warn_func = logger.warning
     py_sdk = False
 except ImportError:
     # the case where this file runs on Python SDK for config validation
@@ -104,7 +115,9 @@ class ConfigParam:
             expected_types = self._parse_allowed_types(config_dict[_TYPE])
             if type(input_value) not in expected_types:
                 raise TypeError(
-                    f"Config parameter {name} type needs to be one of {[e.__name__ for e in expected_types]}. Found: {type(input_value).__name__}."
+                    f"Config parameter {name} type needs to be one of "
+                    f"{[e.__name__ for e in expected_types]}. "
+                    f"Found: {type(input_value).__name__}."
                 )
 
     def _check_options(self, input_value, name, config_dict):
@@ -113,7 +126,8 @@ class ConfigParam:
             options = self._handle_dependencies(config_dict[_OPTIONS])
             if input_value not in options:
                 raise SMPInvalidArgumentError(
-                    f"Config parameter {name} must be one of {config_dict[_OPTIONS]}. Found: {input_value}."
+                    f"Config parameter {name} must be one of {config_dict[_OPTIONS]}. "
+                    f"Found: {input_value}."
                 )
 
     def _check_bounds_in_config(self, input_value, bound_type, name, config_dict):
@@ -124,16 +138,20 @@ class ConfigParam:
         if bound_type == "upper_bound":
             if input_value > bound:
                 raise SMPInvalidArgumentError(
-                    f"Config parameter {name} ({input_value}) cannot be larger than {config_dict[bound_type]} ({bound})."
+                    f"Config parameter {name} ({input_value}) cannot be larger than "
+                    f"{config_dict[bound_type]} ({bound})."
                 )
         elif bound_type == "lower_bound":
             if input_value < bound:
                 raise SMPInvalidArgumentError(
-                    f"Config parameter {name} ({input_value}) cannot be less than {config_dict[bound_type]} ({bound})."
+                    f"Config parameter {name} ({input_value}) cannot be less than "
+                    f"{config_dict[bound_type]} ({bound})."
                 )
         else:
             raise SMPInvalidArgumentError(
-                f"Error: the only inputs to this `check_bounds_in_config()` should be 'upper_bound' or 'lower_bound'. This is a bug and should be fixed."
+                "Error: the only inputs to this `check_bounds_in_config()` "
+                "should be 'upper_bound' or 'lower_bound'. "
+                "This is a bug and should be fixed."
             )
 
     def _check_requires(self, input_value, requires_type, name, config_dict):
@@ -144,7 +162,9 @@ class ConfigParam:
 
         if requires_type not in ("requires", "requires_not", "requires_either"):
             raise SMPInvalidArgumentError(
-                f"Error: the only inputs to this `_check_requires()` should be 'requires', 'requires_not', or 'requires_either'. This is a bug and should be fixed."
+                "Error: the only inputs to this `_check_requires()` "
+                "should be 'requires', 'requires_not', or 'requires_either'. "
+                "This is a bug and should be fixed."
             )
 
         if requires_type in ("requires", "requires_not"):
@@ -152,13 +172,15 @@ class ConfigParam:
                 if requires_type == "requires":
                     if self.existing_params[k].value != v and input_value != default:
                         raise SMPInvalidArgumentError(
-                            f"Setting config parameter {name} to non-default value {input_value} requires {k} to be set to {v}. Found: {self.existing_params[k].value}"
+                            f"Setting config parameter {name} to non-default value {input_value} "
+                            f"requires {k} to be set to {v}. Found: {self.existing_params[k].value}"
                         )
                 else:
                     # requires_not
                     if self.existing_params[k].value == v and input_value != default:
                         raise SMPInvalidArgumentError(
-                            f"Setting config parameter {name} to non-default value {input_value} requires {k} to not be {v}."
+                            f"Setting config parameter {name} to non-default value {input_value} "
+                            f"requires {k} to not be {v}."
                         )
             return
 
@@ -173,7 +195,9 @@ class ConfigParam:
                 provided_configs[k] = self.existing_params[k].value
             if not requirement_satisfied:
                 raise SMPInvalidArgumentError(
-                    f"Setting config parameter {name} to non-default value {input_value} requires either of following configs: {config_dict['requires_either']} But the configs found are: {provided_configs}"
+                    f"Setting config parameter {name} to non-default value {input_value} "
+                    f"requires either of following configs: {config_dict['requires_either']} "
+                    f"But the configs found are: {provided_configs}"
                 )
 
     def _maybe_convert(self, value):
@@ -209,6 +233,7 @@ class ConfigParam:
 
     def _parse_allowed_types(self, types):
         """Parse allowed types."""
+
         def _parse(t):
             if t is None:
                 return type(None)
@@ -282,7 +307,7 @@ class ModelParallelConfig:
         self._config_dict = params
 
         # Enable fp16 and fp16_param backward compatibility.
-        self._fp16_param_init = self.fp16 or self.fp16_params
+        self._fp16_param_init = self.fp16 or self.fp16_params  # pylint: disable=no-member
 
         # Enforce additional constraints.
         self.enforce_additional_constraints()
@@ -291,7 +316,7 @@ class ModelParallelConfig:
 
     def load_schema(self, path):
         """Load schema from given path."""
-        with open(path, "r") as f:  # pylint: disable=invalid-name,unspecified-encoding
+        with open(path, "r") as f:  # pylint: disable=invalid-name
             schema = yaml.safe_load(f)
         return schema
 
@@ -303,7 +328,8 @@ class ModelParallelConfig:
             if alias in config:
                 if orig in config and config[alias] != config[orig]:
                     raise SMPInvalidArgumentError(
-                        f"Conflicting values {config[orig]} and {config[alias]} are provided for config parameter {orig} and its alias {alias}."
+                        f"Conflicting values {config[orig]} and {config[alias]} "
+                        f"are provided for config parameter {orig} and its alias {alias}."
                     )
                 config[orig] = config[alias]
                 del config[alias]
@@ -327,33 +353,35 @@ class ModelParallelConfig:
         """Enforce additional constraints."""
         # Need to be careful here to make sure these do not conflict with the
         # existing constraints.
+        # pylint: disable=no-member,access-member-before-definition
         if self.active_microbatches != self.microbatches and self.pipeline != "interleaved":
             # PT limitation right now
             self.pipeline = "interleaved"
             info_func(
-                "Simple pipeline is only supported when 'active_microbatches' is equal to 'microbatches'. Using interleaved pipeline instead."
+                "Simple pipeline is only supported when 'active_microbatches' "
+                "is equal to 'microbatches'. Using interleaved pipeline instead."
             )
 
         if self.pipeline_parallel_degree > 1 and self.checkpoint_attentions:
             warn_func(
-                "Cannot checkpoint attentions when pipeline-parallel degree is more than 1, disabling attention checkpointing."
+                "Cannot checkpoint attentions when pipeline-parallel degree is more than 1, "
+                "disabling attention checkpointing."
             )
             self.checkpoint_attentions = False
 
-        if (
-            self.sharded_data_parallel_degree > 1
-            and self.tensor_parallel_degree > 1
-        ):
+        if self.sharded_data_parallel_degree > 1 and self.tensor_parallel_degree > 1:
             # If this is not valid, then we need additional logic to handle non TP distributed
             # parameters in ZeRO-2D
             if not self.prescaled_batch:
                 raise SMPInvalidArgumentError(
-                    "When using combination of SDP and TP, prescaled_batch needs to be True, meaning all GPUs in a tp_group receive the same data"
+                    "When using combination of SDP and TP, prescaled_batch needs to be True, "
+                    "meaning all GPUs in a tp_group receive the same data"
                 )
+        # pylint: enable=no-member,access-member-before-definition
 
     def zero2d_enabled(self):
         """Return if zero2d is enabled."""
-        return self.sharded_data_parallel_degree > 1
+        return self.sharded_data_parallel_degree > 1  # pylint: disable=no-member
 
     def zero2d_config_dict(self):
         """Get the zero2d config dictionary."""
@@ -390,7 +418,8 @@ class ModelParallelConfig:
         for k, v in sorted(deprecated_configs.items()):
             if "replacement" in v.cfg_dict:
                 warn_func(
-                    f"WARNING: \"{k}\" is a deprecated config key, please use \"{v.cfg_dict['replacement']}\" instead"
+                    f'WARNING: "{k}" is a deprecated config key, '
+                    f"please use \"{v.cfg_dict['replacement']}\" instead"
                 )
             else:
                 warn_func(f'WARNING: "{k}" is a deprecated config key')
