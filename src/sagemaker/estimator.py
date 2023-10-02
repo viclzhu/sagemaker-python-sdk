@@ -3415,6 +3415,8 @@ class Framework(EstimatorBase):
         self.checkpoint_local_path = checkpoint_local_path
         self.enable_sagemaker_metrics = enable_sagemaker_metrics
 
+        self.unsupported_dlc_image_for_sm_parallelism = list("2.0.1-gpu-py310-cu121-ubuntu20.04-sagemaker-pr-3303")
+
     def _prepare_for_training(self, job_name=None):
         """Set hyperparameters needed for training. This method will also validate ``source_dir``.
 
@@ -3846,8 +3848,20 @@ class Framework(EstimatorBase):
             # smdistributed strategy selected
             if get_mp_parameters(distribution):
                 distribution_config["mp_parameters"] = get_mp_parameters(distribution)
+            # first make sure torch_distributed is enabled if instance type is p5
+            torch_distributed_enabled = distribution.get("torch_distributed").get("enabled", False)
             smdistributed = distribution["smdistributed"]
             smdataparallel_enabled = smdistributed.get("dataparallel", {}).get("enabled", False)
+            p5_enabled = True if self.instance_type == "p5.48xlarge" else False
+            img_uri = "" if self.image_uri == None else self.image_uri
+            for unsupported_image in self.unsupported_dlc_image_for_sm_parallelism:
+                if unsupported_image in img_uri and not torch_distributed_enabled:
+                    raise ValueError(f"SMDistributed is currently incompatible with DLC image: {img_uri}.")
+            if not torch_distributed_enabled and p5_enabled:
+                raise ValueError("SMModelParallel currently does not support p5 instances.")
+            if smdataparallel_enabled and p5_enabled:
+                raise ValueError("SMDataParallel currently does not support p5 instances.")
+            # smdistributed strategy selected with supported instance type
             distribution_config[self.LAUNCH_SM_DDP_ENV_NAME] = smdataparallel_enabled
             distribution_config[self.INSTANCE_TYPE] = self.instance_type
             if smdataparallel_enabled:
